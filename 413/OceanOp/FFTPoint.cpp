@@ -1,0 +1,27 @@
+// FFTPoint.cpp: implementation of the CFFTPoint class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "FFT.h"
+#include "FFTPoint.h"
+
+#ifdef _DEBUG
+#undef THIS_FILE
+static char THIS_FILE[]=__FILE__;
+#define new DEBUG_NEW
+#endif
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+CFFTPoint::CFFTPoint()
+{
+
+}
+
+CFFTPoint::~CFFTPoint()
+{
+
+}

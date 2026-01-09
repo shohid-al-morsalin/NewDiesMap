@@ -1,0 +1,24 @@
+// Log.cpp: implementation of the CLog class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+
+#include "IPC/SMHdr.h"
+
+#include "Log.h"
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+CLog::CLog() {
+	pIPC = NULL;
+}
+
+CLog::~CLog() {}
+
+// Use in 900TC only
+void CLog::LogLocal(CString& msg, short level) {}
+
+void CLog::Log(CSMHdr& SM) {}

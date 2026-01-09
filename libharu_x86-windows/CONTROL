@@ -1,0 +1,8 @@
+Package: libharu
+Version: 2.4.4
+Port-Version: 1
+Depends: libpng, vcpkg-cmake:x64-windows, vcpkg-cmake-config:x64-windows, zlib
+Architecture: x86-windows
+Multi-Arch: same
+Abi: 8104da7e0b3392a0434b1ea5c25a3d92d2fe64c242bc6bae5c8a1033e6da970d
+Description: libharu - free PDF library

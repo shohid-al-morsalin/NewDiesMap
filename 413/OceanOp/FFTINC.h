@@ -1,0 +1,1 @@
+#define SPECLEN	512

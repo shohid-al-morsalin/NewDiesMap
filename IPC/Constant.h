@@ -1,0 +1,26 @@
+#pragma once
+
+#define LOCIDLEN			32
+#define CARRIERLOCIDLEN		32
+#define MAXCAPACITYLEN		25
+#define LOTIDLEN			32
+#define PRJIDLEN			64
+#define CRJIDLEN			64
+#define RECIPEIDLEN			32
+#define SLOTMAPLEN			26
+#define USAGELEN			32
+#define MODELNUMLEN			32
+#define SERIALNUMLEN		32
+#define MANUFACTURERLEN		32
+#define DEVICETYPELEN		8
+#define REVISIONLEVELLEN	8
+#define HEADSTATUSLEN		5
+#define MAXPAUSEEVENT		8
+#define MAXPRCSCTRLSPEC		1
+#define CTRLRULELEN			16
+#define OUTPRULELEN			16
+#define RCPNAMELEN			64
+#define BCRHEADIDLEN		3
+#define BCRCONFIGLEN		4
+
+#define TEXTLEN				256

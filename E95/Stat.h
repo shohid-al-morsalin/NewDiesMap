@@ -1,0 +1,32 @@
+#pragma once
+
+struct SStat {
+public:
+	SStat();
+	virtual ~SStat();
+
+	void Dump(FILE* fp);
+
+public:
+	//////////////////////////////////////////////////////////////////////////
+	int N = 0;
+	double sum = 0, sum2 = 0;
+	//////////////////////////////////////////////////////////////////////////
+	//float fTTV = 0;
+	float fStdev = 0;
+	float fAve = 0;
+	float fMin = 0;
+	float fMax = 0;
+	//////////////////////////////////////////////////////////////////////////
+	float fWarp = 0;
+	float fBow = 0;
+	float fStress = 0;
+	float fMaxDieTTV = 0;
+	float fP2PMaxTTV = 0; //20120222
+	//////////////////////////////////////////////////////////////////////////
+public:
+	void Clear();
+	void Add(float v);
+	//void Dump(FILE* fp);
+	void Calculate();
+};

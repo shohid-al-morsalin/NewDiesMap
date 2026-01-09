@@ -1,0 +1,1450 @@
+// ImgWnd.cpp : implementation file
+//
+
+#include "stdafx.h"
+
+#include <math.h>
+#include "ImgWnd.h"
+#include "413App.h"
+#include "GlobalDeviceContainer.h"
+
+#define PIE180 0.0174532925199432957692369076849
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+// CImgWnd
+
+CImgWnd::CImgWnd()
+{
+	pPackedDIB1 = new CPackedDIB;
+	pPackedDIB2 = new CPackedDIB;
+	pOverlayDIB1 = new CPackedDIB;
+	pOverlayDIB2 = new CPackedDIB;
+
+	pPackedDIB1->pDIB = NULL;
+	pPackedDIB2->pDIB = NULL;
+	pOverlayDIB1->pDIB = NULL;
+	pOverlayDIB2->pDIB = NULL;
+
+	pRcp=NULL;
+	pAve=NULL;
+	bStoreComposite = FALSE;
+
+	SaveName="";
+
+	bScaled = FALSE;
+	fAve = fStdev = 0;
+	Oly1CX = Oly1CY = Oly2CX = Oly2CY = 0;
+}
+
+CImgWnd::~CImgWnd()
+{
+	ClearDIB();
+	ClearDIB2();
+
+	delete pPackedDIB1;
+	delete pPackedDIB2;
+	delete pOverlayDIB1;
+	delete pOverlayDIB2;
+}
+
+
+BEGIN_MESSAGE_MAP(CImgWnd, CStatic)
+	//{{AFX_MSG_MAP(CImgWnd)
+	ON_WM_PAINT()
+	ON_WM_RBUTTONUP()
+	ON_WM_LBUTTONUP()
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+/////////////////////////////////////////////////////////////////////////////
+// CImgWnd message handlers
+
+void CImgWnd::OnPaint() 
+{
+	CPaintDC dc(this); // device context for painting
+	Draw(&dc);
+	ReleaseDC(&dc);
+	// Do not call CStatic::OnPaint() for painting messages
+}
+
+void CImgWnd::ClearDIB()
+{
+	if (pPackedDIB1->pDIB)
+	{
+		if (pPackedDIB1->pDIB->pDIBBits)
+		{
+			delete [] pPackedDIB1->pDIB->pDIBBits;
+		}
+		delete pPackedDIB1->pDIB;
+		pPackedDIB1->pDIB = NULL;
+	}
+	ClearOly(1);
+	ClearOly(2);
+}
+
+void CImgWnd::ClearDIB2()
+{
+	if (pPackedDIB2->pDIB)
+	{
+		if (pPackedDIB2->pDIB->pDIBBits)
+		{
+			delete [] pPackedDIB2->pDIB->pDIBBits;
+		}
+		delete pPackedDIB2->pDIB;
+		pPackedDIB2->pDIB = NULL;
+	}
+}
+
+void CImgWnd::ClearOly(int n)
+{
+	switch (n)
+	{
+	case 1:
+		if (pOverlayDIB1->pDIB)
+		{
+			if (pOverlayDIB1->pDIB->pDIBBits)
+			{
+				delete [] pOverlayDIB1->pDIB->pDIBBits;
+			}
+			delete pOverlayDIB1->pDIB;
+			pOverlayDIB1->pDIB = NULL;
+		}
+		break;
+	default:
+		if (pOverlayDIB2->pDIB)
+		{
+			if (pOverlayDIB2->pDIB->pDIBBits)
+			{
+				delete [] pOverlayDIB2->pDIB->pDIBBits;
+			}
+			delete pOverlayDIB2->pDIB;
+			pOverlayDIB2->pDIB = NULL;
+		}
+		break;
+	}
+}
+
+void CImgWnd::Add(CPackedDIB *pDIB)
+{
+	ClearDIB();
+	if (!pDIB || !pDIB->pDIB)
+	{
+		return;
+	}
+	pPackedDIB1->pDIB = pDIB->pDIB;
+}
+
+void CImgWnd::DupStore1(CPackedDIB &DIB)
+{
+	ClearDIB();	// Clear first [4/16/2013 Administrator]
+	if (!DIB.pDIB || !DIB.pDIB->pDIBBits)
+	{
+		Invalidate();
+		return ;
+	}
+	ClearDIB();
+	pPackedDIB1->CreateBlank();
+	pPackedDIB1->pDIB->BmpInfo = DIB.pDIB->BmpInfo;
+	pPackedDIB1->CalcBytePerRow();
+	int SizeImage = pPackedDIB1->BytesPerRow * pPackedDIB1->IHeight;
+	pPackedDIB1->pDIB->pDIBBits = new BYTE [SizeImage];
+	memcpy(pPackedDIB1->pDIB->pDIBBits, DIB.pDIB->pDIBBits, SizeImage);
+	Invalidate();
+}
+
+void CImgWnd::DupStore2(CPackedDIB &DIB)
+{
+	ClearDIB2();	// Clear first [4/16/2013 Administrator]
+	if (!DIB.pDIB || !DIB.pDIB->pDIBBits)
+	{
+		Invalidate();
+		return ;
+	}
+	ClearDIB2();
+	pPackedDIB2->CreateBlank();
+	pPackedDIB2->pDIB->BmpInfo = DIB.pDIB->BmpInfo;
+	pPackedDIB2->CalcBytePerRow();
+	int SizeImage = pPackedDIB2->BytesPerRow * pPackedDIB2->IHeight;
+	pPackedDIB2->pDIB->pDIBBits = new BYTE [SizeImage];
+	memcpy(pPackedDIB2->pDIB->pDIBBits, DIB.pDIB->pDIBBits, SizeImage);
+}
+
+void CImgWnd::Refresh()
+{
+	CDC *pDC = GetDC();
+	Draw(pDC);
+	ReleaseDC(pDC);
+}
+
+CPackedDIB * CImgWnd::CreateDIB(int wd, int ht, int bpp)
+{
+	CPackedDIB *p = new CPackedDIB;
+	if (p)
+	{
+		p->pDIB->BmpInfo.biBitCount = bpp;
+		p->pDIB->BmpInfo.biHeight = ht;
+		p->pDIB->BmpInfo.biWidth = (wd * 4) / 4;
+		p->pDIB->BmpInfo.biPlanes = 1;
+		p->pDIB->BmpInfo.biCompression = 0;
+		p->pDIB->BmpInfo.biSize = sizeof(BITMAPINFOHEADER);
+		p->pDIB->BmpInfo.biXPelsPerMeter = p->pDIB->BmpInfo.biYPelsPerMeter = 0;
+		p->pDIB->BmpInfo.biClrUsed = p->pDIB->BmpInfo.biClrImportant = 0;
+		p->CalcBytePerRow();
+		p->pDIB->BmpInfo.biSizeImage = p->BytesPerRow * abs(p->IHeight);
+		p->pDIB->pDIBBits = new BYTE [p->pDIB->BmpInfo.biSizeImage];
+	}
+	return p;
+}
+
+void CImgWnd::Clean()
+{
+	if (!pPackedDIB1->pDIB || !pPackedDIB1->pDIB->pDIBBits)
+	{
+		return ;
+	}
+	
+	CRGB3 *pB = (CRGB3 *) pPackedDIB1->pDIB->pDIBBits;
+	
+	for (int i=0; i<abs(pPackedDIB1->IHeight); i++)
+	{
+		for (int j=0; j<pPackedDIB1->IWidth; j++)
+		{
+			pB->Grey(pB->I());
+			pB++;
+		}
+	}
+	Invalidate();
+}
+
+short CImgWnd::ExtractLine(int &idx, short *pBuf, int nBuf, float ang, short offset, BOOL &bX, BOOL bChg)
+{
+	// ensure ang to be within 0 and 360 but not including 360 [9/14/2011 Administrator]
+	while (ang < 0)
+	{
+		ang += 360;
+	}
+	while (ang >= 360)
+	{
+		ang -= 360;
+	}
+	idx = -1; // indicate offset into pBuf the point at dx,dy [4/21/2013 Administrator]
+
+	double dx,dy;		// Coordinate of the center point of the line [4/21/2013 Administrator]
+	float da = ang+90;
+	while (da < 0)
+	{
+		da += 360;
+	}
+	while (da >= 360)
+	{
+		da -= 360;
+	}
+	p413App->Global.Polar2Cartesian(offset,da,dx,dy);  // Find displacement of offset radius at 90 degree to ang [9/12/2011 Administrator]
+
+	float m;
+	int x,y;
+	float cx,cy;
+	int siz = 0;
+	SIPackedDIB *p = pPackedDIB1->pDIB;
+
+	// Center of image [4/21/2013 Administrator]
+	cx = pPackedDIB1->IWidth / 2.0f;
+	cy = pPackedDIB1->IHeight / 2.0f;
+
+	// Center of line [4/21/2013 Administrator]
+	int cxl = cx + dx;
+	int cyl = cy + dy;
+
+
+	// Note. top left corner is 0,0 in image space, trim calculation uses 0,0 coordinate at center of image [9/14/2011 Administrator]
+	if (ang == 0)
+	{
+		// y is alway zero [9/14/2011 Administrator]
+		bX = TRUE;
+		for (x=0;x<pPackedDIB1->IWidth;x++)
+		{
+			y = int(cy + dy);
+			if ((y >=0) && (y < pPackedDIB1->IHeight))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) && (x >= cxl))
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang < 45)
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415f / 180.0f));
+		for (x=0; x<pPackedDIB1->IWidth; x++)
+		{
+			y = int(m * (x-cx-dx) + cy + dy);
+			if ((y >=0) && (y < pPackedDIB1->IHeight))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) && (x>=cxl) /*&& (y>=cyl)*/)
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang < 90)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=0; y<pPackedDIB1->IHeight; y++)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<pPackedDIB1->IWidth))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) /*&& (x>=cxl)*/ && (y >= cyl))
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang == 90)
+	{
+		bX = FALSE;
+		x = int(cx + dx);
+		if ((x < 0) || (x >= pPackedDIB1->IWidth))
+		{
+			return 0;
+		}
+		for (y=0; y<pPackedDIB1->IHeight; y++)
+		{
+			if (siz < nBuf)
+			{
+				if (bChg)
+				{
+					*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				else
+				{
+					*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				if ((idx==-1) && (y >= cyl))
+				{
+					idx = siz;
+				}
+				siz++;
+			}
+		}
+	}
+	else if (ang < 135)
+	{
+		bX = FALSE;
+		m = float(-tan((180-ang) * 3.1415 / 180.0f));
+		for (y=0; y<pPackedDIB1->IHeight; y++)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<pPackedDIB1->IWidth))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) /*&& (x>=cxl)*/ && (y >= cyl))
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang < 180)
+	{
+		bX = TRUE;
+		m = float(tan((ang) * 3.1415 / 180.0f));
+		for (x=pPackedDIB1->IWidth-1; x>=0; x--)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<pPackedDIB1->IHeight))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) && (x<=cxl) /*&& (y >= cyl)*/)
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang == 180)
+	{
+		bX = TRUE;
+		y = int(cy+dy);
+		if ((y<0) || (y >= pPackedDIB1->IHeight))
+		{
+			return 0;	// Out of bound [4/13/2013 Administrator]
+		}
+		for (x=pPackedDIB1->IWidth-1; x>=0; x--)
+		{
+			if (siz < nBuf)
+			{
+				if (bChg)
+				{
+					*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				else
+				{
+					*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				if ((idx==-1) && (x<=cxl))
+				{
+					idx = siz;
+				}
+				siz++;
+			}
+		}
+	}
+	else if (ang < 225)
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (x=pPackedDIB1->IWidth-1; x>=0; x--)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<pPackedDIB1->IHeight))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) && (x<=cxl) /*&& (y >= cyl)*/)
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang < 270)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=pPackedDIB1->IHeight-1; y>=0; y--)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<pPackedDIB1->IWidth))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) /*&& (x>=cxl)*/ && (y <= cyl))
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else if (ang == 270)
+	{
+		bX = FALSE;
+		x = int(cx + dx);
+		if ((x<0) || (x >= pPackedDIB1->IWidth))
+		{
+			return 0;
+		}
+		for (y=pPackedDIB1->IHeight-1; y>=0; y--)
+		{
+			if (siz < nBuf)
+			{
+				if (bChg)
+				{
+					*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				else
+				{
+					*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+				}
+				if ((idx==-1) && (y <= cyl))
+				{
+					idx = siz;
+				}
+				siz++;
+			}
+		}
+	}
+	else if (ang < 315)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=pPackedDIB1->IHeight-1; y>=0; y--)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<pPackedDIB1->IWidth))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) /*&& (x==cxl)*/ && (y <= cyl))
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	else
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (x=0; x<pPackedDIB1->IWidth; x++)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<pPackedDIB1->IHeight))
+			{
+				if (siz < nBuf)
+				{
+					if (bChg)
+					{
+						*(pBuf++) = pPackedDIB1->GetSetPixelM1(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					else
+					{
+						*(pBuf++) = pPackedDIB1->GetPixel(short(x),short(pPackedDIB1->IHeight-y-1)); 
+					}
+					if ((idx==-1) && (x>=cxl) /*&& (y == cyl)*/)
+					{
+						idx = siz;
+					}
+					siz++;
+				}
+			}
+		}
+	}
+	return siz;
+}
+
+void CImgWnd::Save(CString &name)
+{
+	pPackedDIB1->Save(name);
+}
+
+BOOL CImgWnd::DestroyWindow() 
+{
+	ClearDIB();	
+	return CStatic::DestroyWindow();
+}
+
+
+void CImgWnd::ShowEchoView(CDC *pDC, CRect &rc)
+{
+	if (!pDC)
+	{
+		return ;
+	}
+	
+	pDC->SetBkMode(TRANSPARENT);
+	if (!p413App->bSimuVideo)
+	{
+		pDC->SetTextColor(RGB(255,0,0));
+	}
+	else
+	{
+		pDC->SetTextColor(RGB(255,255,255));
+	}
+	pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+	
+	int Y = rc.bottom;
+	CString str;
+	C413Global *g = &p413App->Global;
+	str.Format("X:%.3f Y:%.3f Z1:%.3f Z2:%.3f", g->LocX, g->LocY, g->LocZ1, g->LocZ2);
+	pDC->TextOut(rc.left,Y,str);
+	
+	CSingleLock Lock(&CS);
+	Lock.Lock();
+	if (pAve && pRcp)
+	{
+		for (int i=0; i<MaXPA; i++)
+		{
+			MParam *pa = &pRcp->meParaM[0].MPa[i];
+			if (pa->Name.GetLength())
+			{
+				Y -= 18;
+				str.Format("%s %.1f um", pa->Name, pAve[i]);
+				pDC->TextOut(rc.left,Y,str);
+			}
+		}
+	}
+	Lock.Unlock();
+}
+
+#define DS_BITMAP_FILEMARKER  ((WORD) ('M' << 8) | 'B')
+
+void CImgWnd::StoreComposite(CBitmap &bmp, CString FileName)
+{
+	CString path = DosUtil.DirSys.ExtractFilePath(FileName);
+	DosUtil.DirSys.GotoDirec(path);
+
+	CFile file;
+	if (!file.Open(FileName, CFile::modeWrite|CFile::modeCreate))
+	{
+		return ;
+	}
+	BITMAP bitmapInfo;
+	bmp.GetBitmap(&bitmapInfo);
+	
+	long BytesPerRow = bitmapInfo.bmWidth * (bitmapInfo.bmBitsPixel / 8);
+	BytesPerRow += (4-BytesPerRow%4)%4;
+	
+	BITMAPINFOHEADER BitmapHead;
+	ZeroMemory( &BitmapHead, sizeof(BITMAPINFOHEADER));
+	BitmapHead.biWidth		= bitmapInfo.bmWidth;
+	BitmapHead.biHeight		= -bitmapInfo.bmHeight;
+	BitmapHead.biPlanes		= 1;
+	BitmapHead.biBitCount	= bitmapInfo.bmBitsPixel;
+	BitmapHead.biSizeImage	= BytesPerRow * abs(bitmapInfo.bmHeight);
+	BitmapHead.biSize		= sizeof(BITMAPINFOHEADER);
+	BitmapHead.biClrUsed	= 0;
+	BitmapHead.biClrImportant = 0;
+	BitmapHead.biCompression = BI_RGB;
+
+	// assumes 256 gray level
+	// 	int i;
+	BITMAPFILEHEADER   hdr;
+	DWORD dwFileHeaderSize = sizeof(BITMAPINFOHEADER) + sizeof(hdr) + 256 * sizeof(RGBQUAD);
+	RGBQUAD	*pRGB = new RGBQUAD[256];
+	for (int i = 0; i < 256; i++)
+	{
+		pRGB[i].rgbRed = i;
+		pRGB[i].rgbGreen = i;
+		pRGB[i].rgbBlue = i;
+	}
+	// Fill in the fields of the file header 
+	hdr.bfType       = DS_BITMAP_FILEMARKER;
+	hdr.bfSize       = dwFileHeaderSize + BitmapHead.biSizeImage;
+	hdr.bfReserved1  = 0;
+	hdr.bfReserved2  = 0;
+	hdr.bfOffBits    = dwFileHeaderSize;
+	
+	// Write the file header 
+	file.Write(&hdr, sizeof(BITMAPFILEHEADER));	
+	// Write the DIB header
+	file.Write(&BitmapHead, sizeof(BITMAPINFOHEADER));
+	//  [8/11/2010 XPMUser]
+	file.Write(pRGB, sizeof(RGBQUAD) * 256);
+	//  [8/11/2010 XPMUser]
+	
+	// 	int iByteToTransfer;
+	// 	iByteToTransfer = bitmapInfo.bmWidth * bitmapInfo.bmHeight * bitmapInfo.bmBitsPixel /8;
+	UCHAR* buf3 = new UCHAR [/*iByteToTransfer*/BitmapHead.biSizeImage];
+	bmp.GetBitmapBits(BitmapHead.biSizeImage, buf3);
+	file.Write(buf3, BitmapHead.biSizeImage);
+	file.Close();
+	if (buf3) 
+	{ 
+		delete [] buf3; 
+	}
+	if (pRGB)
+	{
+		delete [] pRGB;
+	}
+}
+
+void CImgWnd::Draw(CDC *pDC)
+{
+	CRect rc;
+	GetClientRect(&rc);
+	
+	//int sx,sy;
+	CDC dcMem;
+	CBitmap bmp;
+	HBITMAP oldBmp;
+	dcMem.CreateCompatibleDC(pDC);
+	
+	bmp.CreateCompatibleBitmap(pDC, (int)(rc.right), (int)(rc.bottom));
+	oldBmp = (HBITMAP) dcMem.SelectObject(bmp);
+	
+	HDC hDC = dcMem.GetSafeHdc();
+	::SetStretchBltMode(hDC,COLORONCOLOR);
+	
+	CRgn Rg;
+	Rg.CreateRectRgn(rc.left, rc.top, rc.right, rc.bottom);
+	dcMem.SelectClipRgn(&Rg);
+	
+	CBrush br(RGB(200,200,200));
+	dcMem.FillRect(rc,&br);
+	pDC->FillRect(rc,&br);
+	
+	int rcw = rc.Width();
+	int rch = rc.Height();
+	
+	if (pPackedDIB1->pDIB && pPackedDIB1->pDIB->pDIBBits)
+	{
+		int w = pPackedDIB1->pDIB->BmpInfo.biWidth;
+		int h = abs(pPackedDIB1->pDIB->BmpInfo.biHeight);
+		int sx,sy;
+		if ((w>0) && (h>0))
+		{
+			sx = (rcw - w) / 2;
+			sy = (rch - h) / 2;
+			short BPP = pPackedDIB1->pDIB->BmpInfo.biBitCount / 8;
+			memset(pPackedDIB1->pDIB->pDIBBits,255,2*BPP);
+			if (bScaled)
+			{
+				::StretchDIBits(dcMem.GetSafeHdc(),
+					0,0,rcw,rch,
+					0,0,w,h,
+					pPackedDIB1->pDIB->pDIBBits,
+					(BITMAPINFO*)(&pPackedDIB1->pDIB->BmpInfo),
+					DIB_RGB_COLORS,SRCCOPY);
+			}
+			else
+			{
+				::StretchDIBits(dcMem.GetSafeHdc(),
+					sx,sy,w,h,
+					0,0,w,h,
+					pPackedDIB1->pDIB->pDIBBits,
+					(BITMAPINFO*)(&pPackedDIB1->pDIB->BmpInfo),
+					DIB_RGB_COLORS,SRCCOPY);
+			}
+		}
+		if (pOverlayDIB1->pDIB && pOverlayDIB1->pDIB->pDIBBits)
+		{
+			int ow = pOverlayDIB1->pDIB->BmpInfo.biWidth;
+			int oh = abs(pOverlayDIB1->pDIB->BmpInfo.biHeight);
+			
+			if ((ow>0) && (oh>0))
+			{
+				sx = (rcw - w) / 2 + Oly1CX/2 - ow/2;
+				sy = (rch - h) / 2 + Oly1CY/2 - oh/2;
+				short BPP = pOverlayDIB1->pDIB->BmpInfo.biBitCount / 8;
+				memset(pOverlayDIB1->pDIB->pDIBBits,0,2*BPP);
+				::StretchDIBits(dcMem.GetSafeHdc(),
+					sx,sy,ow,oh,
+					0,0,ow,oh,
+					pOverlayDIB1->pDIB->pDIBBits,
+					(BITMAPINFO*)(&pOverlayDIB1->pDIB->BmpInfo),
+					DIB_RGB_COLORS,SRCCOPY);
+			}
+		}
+		if (pOverlayDIB2->pDIB && pOverlayDIB2->pDIB->pDIBBits)
+		{
+			int ow = pOverlayDIB2->pDIB->BmpInfo.biWidth;
+			int oh = abs(pOverlayDIB2->pDIB->BmpInfo.biHeight);
+			
+			if ((ow>0) && (oh>0))
+			{
+				sx = (rcw - w) / 2 + Oly2CX/2 - ow/2;
+				sy = (rch - h) / 2 + Oly2CY/2 - oh/2;
+				short BPP = pOverlayDIB2->pDIB->BmpInfo.biBitCount / 8;
+				memset(pOverlayDIB2->pDIB->pDIBBits,0,2*BPP);
+				::StretchDIBits(dcMem.GetSafeHdc(),
+					sx,sy,ow,oh,
+					0,0,ow,oh,
+					pOverlayDIB2->pDIB->pDIBBits,
+					(BITMAPINFO*)(&pOverlayDIB2->pDIB->BmpInfo),
+					DIB_RGB_COLORS,SRCCOPY);
+			}
+		}
+		if (pRcp && pAve)
+		{
+			ShowEchoView(&dcMem,rc);
+		}
+		pDC->BitBlt(0, 0, rc.right, (int) (rc.bottom), &dcMem, 0, 0, SRCCOPY);
+		//dc.StretchBlt(0, 0, rc.right, (int) (rc.bottom), &dcMem, 0, 0, w, h, SRCCOPY);
+	}
+	if (bStoreComposite)
+	{
+		StoreComposite(bmp,SaveName);
+		bStoreComposite = FALSE;
+	}
+	dcMem.SelectObject(oldBmp);
+	ReleaseDC(&dcMem);
+}
+
+void CImgWnd::ReplaceLine(short *pBuf, float ang, short offset, BOOL &bX)
+{
+	// ensure ang to be within 0 and 360 but not including 360 [9/14/2011 Administrator]
+	while (ang < 0)
+	{
+		ang += 360;
+	}
+	while (ang >= 360)
+	{
+		ang -= 360;
+	}
+
+	double dx,dy;
+	p413App->Global.Polar2Cartesian(offset,ang+90,dx,dy);  // Find displacement of offset radius at 90 degree to ang [9/12/2011 Administrator]
+
+	float m;
+	int ht,ht1,wd,cx,cy;
+	int x,y;
+	SIPackedDIB *p = pPackedDIB1->pDIB;
+
+	wd = p->BmpInfo.biWidth;
+	ht = abs(p->BmpInfo.biHeight);
+	ht1 = ht - 1;
+	cx = wd / 2;
+	cy = ht / 2;
+
+	// Note. top left corner is 0,0 in image space, trim calculation uses 0,0 coordinate at center of image [9/14/2011 Administrator]
+	if (ang == 0)
+	{
+		// y is alway zero [9/14/2011 Administrator]
+		bX = TRUE;
+		for (x=0;x<wd;x++)
+		{
+			y = int(cy + dy);
+			if ((y >=0) && (y < ht))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang <= 45)
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (x=0; x<wd; x++)
+		{
+			y = int(m * (x-cx-dx) + cy + dy);
+			if ((y >=0) && (y < ht))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang < 90)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=0; y<ht; y++)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<wd))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang == 90)
+	{
+		bX = FALSE;
+		x = int(cx + dx);
+		if ((x<0) || (x >= pPackedDIB1->IWidth))
+		{
+			return;
+		}
+		for (y=0; y<ht; y++)
+		{
+			pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+		}
+	}
+	else if (ang <135)
+	{
+		bX = FALSE;
+		m = float(-tan((180-ang) * 3.1415 / 180.0f));
+		for (y=0; y<ht; y++)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<wd))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang < 180)
+	{
+		bX = TRUE;
+		m = float(tan((ang) * 3.1415 / 180.0f));
+		for (x=wd-1; x>=0; x--)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<ht))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang == 180)
+	{
+		bX = TRUE;
+		y = int(cy+dy);
+		if ((y<0) || (y >= pPackedDIB1->IHeight))
+		{
+			return ;
+		}
+		for (x=wd-1; x>=0; x--)
+		{
+			pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+		}
+	}
+	else if (ang < 225)
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (x=wd-1; x>=0; x--)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<ht))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang < 270)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=ht-1; y>=0; y--)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<wd))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else if (ang == 270)
+	{
+		bX = FALSE;
+		x = int(cx + dx);
+		if ((x<0) || (x >= pPackedDIB1->IWidth))
+		{
+			return;
+		}
+		for (y=ht-1; y>=0; y--)
+		{
+			pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+		}
+	}
+	else if (ang <= 315)
+	{
+		bX = FALSE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (y=ht-1; y>=0; y--)
+		{
+			x = int((y-(cy+dy)) / m + cx + dx);
+			if ((x >=0) && (x<wd))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+	else
+	{
+		bX = TRUE;
+		m = float(tan(ang * 3.1415 / 180.0f));
+		for (x=0; x<wd; x++)
+		{
+			y = int((x-(cx+dx)) * m + cy + dy);
+			if ((y >=0) && (y<ht))
+			{
+				pPackedDIB1->SetPixelRed(x,ht1-y,*(pBuf++));
+			}
+		}
+	}
+}
+
+int CImgWnd::GetBytesPerRow()
+{
+	if (!pPackedDIB1->pDIB)
+	{
+		// precaution [11/8/2011 Administrator]
+		ASSERT(0);
+		return 0;
+	}
+	long BytesPerRow = pPackedDIB1->pDIB->BmpInfo.biWidth * pPackedDIB1->pDIB->BmpInfo.biBitCount / 8;
+	BytesPerRow += (4-BytesPerRow%4) % 4;	// int alignment
+	return BytesPerRow;
+}
+
+
+BOOL CImgWnd::LoadDIB()
+{
+	CFileDialog dlg(TRUE, "BMP", NULL,
+		OFN_FILEMUSTEXIST|OFN_HIDEREADONLY,
+		"Bitmap files|*.BMP|");
+	if (dlg.DoModal()==IDOK) 
+	{
+		if (LoadDIB(dlg.GetPathName()))
+		{
+			Invalidate(TRUE);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+void CImgWnd::SetRecipe(CRecipe413 *pR)
+{
+	CSingleLock Lock(&CS);
+	Lock.Lock();
+	pRcp = pR;
+	Lock.Unlock();
+}
+
+void CImgWnd::SetAve(float *pA)
+{
+	CSingleLock Lock(&CS);
+	Lock.Lock();
+	pAve = pA;
+	Lock.Unlock();
+}
+
+void CImgWnd::OnRButtonUp(UINT nFlags, CPoint point) 
+{
+	LoadDIB();
+}
+
+void CImgWnd::OnLButtonUp(UINT nFlags, CPoint point) 
+{
+	if (bScaled)
+	{
+		bScaled = FALSE;
+	}
+	else
+	{
+		bScaled = TRUE;
+	}
+	Refresh();
+}
+
+BOOL CImgWnd::LoadDIB(CString fname)
+{
+	if (pPackedDIB1->Load(fname))
+	{
+		DupStore2(*pPackedDIB1);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+// return the offset from center of image in pixel unit [4/14/2013 Administrator]
+float CImgWnd::FindEdge(float angle, FNDMTHD Mth)
+{
+	if (pPackedDIB1->pDIB)
+	{
+		short minLen = pPackedDIB1->IHeight * 0.3f;
+		int siz = 3*pPackedDIB1->pDIB->BmpInfo.biWidth*(pPackedDIB1->pDIB->BmpInfo.biBitCount/8);
+		short *pBuf = new short[siz];  // Must obtain new allocation here [8/21/2010 C2C]
+		float *pScore = new float [siz];
+		if (pBuf)
+		{
+			BOOL bX = FALSE;
+			short idx;
+			short nL = pPackedDIB1->IHeight*3/4;
+			SLnX *pL = new SLnX [nL*2+1];
+			float min;
+			float *pS = pScore;
+			float Offset = 1.0f;
+			angle += 90.0f;
+			if (angle >= 360.0f)
+			{
+				angle -= 360.0f;
+			}
+			short i;
+			short m=0;
+			SLnX *pLL;
+			float Smin, Smax;
+			// Calculate score for every line [5/23/2013 user]
+			for (i=-nL; i<=nL; i++)
+			{
+				int idx1;
+				pLL = pL + m;
+				pLL->angle = angle;
+				pLL->offset = i * Offset;
+				short len = ExtractLine(idx1,pBuf,siz,angle,i*Offset,bX,FALSE);
+				if (len > minLen)
+				{
+					*pS = pLL->score = ScoreLine1(pBuf,len);
+					if (m)
+					{
+						if (*pS < Smin)
+						{
+							Smin = *pS;
+						}
+						if (*pS > Smax)
+						{
+							Smax = *pS;
+						}
+					}
+					else
+					{
+						Smin = Smax = *pS;
+					}
+					m++;
+					pS++;
+				}
+			}
+			
+			float v=(Smax-Smin)*0.05;
+			Smin = Smin+v;
+			Smax = Smax-v;
+			FILE *fp = NULL;
+			//fp = fopen("C:\\TEMP\\LINE.CSV", "wb");
+			if (fp)
+			{
+				pS = pScore;
+				for (i=0; i<m; i++)
+				{
+					switch (Mth)
+					{
+					case DARKBWD:
+					case DARKFWD:
+						v = (*pS < Smin)?0:Smax;
+						break;
+					default:
+						v = (*pS > Smax)?0:Smax;
+						break;
+					}
+					fprintf(fp,"%.2f,%.2f\n",*(pS),v);
+					*pS = v;
+					pS++;
+				}
+				fclose(fp);
+			}
+			else
+			{
+				// Make the score either 0 or Smax [5/23/2013 user]
+				pS = pScore;
+				for (i=0; i<m; i++)
+				{
+					switch (Mth)
+					{
+					case DARKBWD:
+					case DARKFWD:
+						*(pS++) = (*pS < Smin)?0:Smax;
+						break;
+					default:
+						*(pS++) = (*pS > Smax)?0:Smax;
+						break;
+					}
+				}
+			}
+
+			
+			switch (Mth)
+			{
+			case INTGR:
+				Smooth(pScore,m);
+				Smooth(pScore,m);
+				
+// 				FILE *fp2 = fopen("C:\\TEMP\\LINE-S.CSV", "wb");
+// 				if (fp2)
+// 				{
+// 					pS = pScore;
+// 					for (i=0; i<m; i++)
+// 					{
+// 						fprintf(fp2,"%.2f\n",*(pS++));
+// 					}
+// 					fclose(fp2);
+// 				}
+				Integrate(pScore,m);
+				
+// 				FILE *fp3 = fopen("C:\\TEMP\\LINEI.CSV", "wb");
+// 				if (fp3)
+// 				{
+// 					pS = pScore;
+// 					for (i=0; i<m; i++)
+// 					{
+// 						fprintf(fp3,"%.2f\n",*(pS++));
+// 					}
+// 					fclose(fp3);
+// 				}
+				break;
+			}
+
+			SLnX *pLmin=NULL;
+			float score=0;
+			short dOff = 3;
+			switch (Mth)
+			{
+			case DARKFWD:
+			case BRITFWD:
+				pS = pScore + m - 1 - dOff;
+				if (*pS == 0) // Initial value is low [4/22/2013 Administrator]
+				{
+					for (i=m-1-dOff; i>=0+dOff; i--)
+					{
+						if (*pS > Smax/2) // look for a non zero value [4/22/2013 Administrator]
+						{
+							pLmin = pL+i;
+							break;
+						}
+						pS--;
+					}
+				}
+				else
+				{
+					for (i=m-1-dOff; i>=0+dOff; i--)
+					{
+						if (*pS < Smax/2) // look for a zero value [4/22/2013 Administrator]
+						{
+							pLmin = pL+i;
+							break;
+						}
+						pS--;
+					}
+				}
+				if (pLmin)
+				{
+					int idx1;
+					ExtractLine(idx1,pBuf,siz,pLmin->angle,0,bX,TRUE);
+					ExtractLine(idx1,pBuf,siz,pLmin->angle,pLmin->offset,bX,TRUE);
+					score = pLmin->offset;
+				}
+				break;
+			case DARKBWD:
+			case BRITBWD:
+				pS = pScore+dOff;
+				if (*pS == 0)
+				{
+					for (i=0+dOff; i<m-dOff; i++)
+					{
+						if (*pS > Smax/2)
+						{
+							pLmin = pL+i;
+							break;
+						}
+						pS++;
+					}
+				}
+				else
+				{
+					for (i=0+dOff; i<m-dOff; i++)
+					{
+						if (*pS == 0)
+						{
+							pLmin = pL+i;
+							break;
+						}
+						pS++;
+					}
+				}
+				if (pLmin)
+				{
+					int idx1;
+					ExtractLine(idx1,pBuf,siz,pLmin->angle,0,bX,TRUE);
+					ExtractLine(idx1,pBuf,siz,pLmin->angle,pLmin->offset,bX,TRUE);
+					score = pLmin->offset;
+				}
+				break;
+
+			case INTGR:
+				pS = pScore+7;
+				idx=7;
+				min = *pS;
+				for (i = 7; i<m-7; i++)
+				{
+					if (min > *pS)
+					{
+						min = *pS;
+						idx = i;
+					}
+					pS++;
+				}
+				pS = pScore + idx;
+				for (i=idx; i>=0; i--)
+				{
+					if (*pS >= 0)
+					{
+						idx = i+1;
+						break;
+					}
+					pS--;
+				}
+				pLL = pL + idx;
+				int idx1;
+				ExtractLine(idx1,pBuf,siz,pLmin->angle,0,bX,TRUE);
+				ExtractLine(idx1,pBuf,siz,angle,pLL->offset,bX,TRUE);
+				score = pLL->offset;
+				break;
+			}
+
+			delete [] pL;
+			delete [] pBuf;
+			delete [] pScore;
+
+			Invalidate(TRUE);
+			return -score;
+		}
+	}
+	return 0;
+}
+
+float CImgWnd::ScoreLine1(short *pBuf, short len)
+{
+	long score=0;
+	float flen = len;
+	for (int i=0; i<len; i++)
+	{
+		score += (*pBuf) * (*pBuf);
+		pBuf++;
+	}
+	return score / flen;
+}
+
+float CImgWnd::GetScore(float angle, float offset)
+{
+	int siz = 3*pPackedDIB1->pDIB->BmpInfo.biWidth*(pPackedDIB1->pDIB->BmpInfo.biBitCount/8);
+	short *pBuf = new short[siz];  // Must obtain new allocation here [8/21/2010 C2C]
+	if (pBuf)
+	{
+		angle += 90;
+		if (angle >= 360)
+		{
+			angle -= 360;
+		}
+		BOOL bX;
+		int idx1;
+		short len = ExtractLine(idx1,pBuf,siz,angle,offset,bX,TRUE);
+		float score = ScoreLine1(pBuf,len);
+		delete [] pBuf;
+		Invalidate(TRUE);
+		return score;
+	}
+	return 999.99f;
+}
+
+BOOL CImgWnd::Integrate(float *pBuf, short len)
+{
+	float *pNew = new float[len+16];
+	float *p = pNew;
+	float *q = pBuf;
+	
+	int i;
+	short n = 7;
+	for (i=0; i<n; i++)
+	{
+		*(p++) = 0;
+		q++;
+	}
+	for (i=n; i<len-n; i++)
+	{
+		*(p++) = (*(q-n) - *(q+n));
+		q++;
+	}
+	for (int j=i; j<len; j++)
+	{
+		*(p++) = 0;
+	}
+	memcpy(pBuf,pNew,len*sizeof(float));
+	delete [] pNew;
+
+	return TRUE;
+}
+
+BOOL CImgWnd::Smooth(float *pBuf, short len)
+{
+	float *pNew = new float[len+16];
+	if (!pNew)
+	{
+		return FALSE;
+	}
+	float *p = pNew+4;
+	float *q = pBuf+4;
+	int i,j;
+	for (i=4; i<len-4; i++)
+	{
+		*(p++) = (*(q-3) + *(q-2) + *(q-1) + *(q) + *(q+1) + *(q+2) + *(q+3)) / 7;
+		q++;
+	}
+	float v = *(p-1);
+	for (j=i; j<len; j++)
+	{
+		*(p++) = v;
+	}
+	
+	p = pNew;
+	v = *(p+4);
+	for (j=0; j<4; j++)
+	{
+		*(p++) = v;
+	}
+	
+	memcpy(pBuf,pNew,len*sizeof(float));
+	
+	delete [] pNew;
+
+	return TRUE;
+}

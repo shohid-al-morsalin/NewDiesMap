@@ -1,0 +1,19 @@
+// TCtrlBrk.cpp: implementation of the CTCtrlBrk class.
+//
+//////////////////////////////////////////////////////////////////////
+#include "stdafx.h"
+#include "TCtrlBrk.h"
+#ifdef _DEBUG
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+
+#define new DEBUG_NEW
+#endif
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+CTCtrlBrk::CTCtrlBrk() {}
+
+CTCtrlBrk::~CTCtrlBrk() {}
+
+void CTCtrlBrk::Update() {}

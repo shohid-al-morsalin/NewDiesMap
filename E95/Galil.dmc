@@ -1,0 +1,670 @@
+' Motor Control Program
+' Yuen Lim
+' June 1, 2012
+' Ver. 1.20
+' Variables
+' V1, V2, V3 ... input to function variable
+' VM[4] motor status variable
+
+
+#AUTO
+' Must be run in thread 0
+' Initialize variables
+WT 3000
+DM VM[4]
+VM[0]=0
+VM[1]=0
+VM[2]=0
+VM[3]=0
+v1=1
+sfx=6.1041
+isfx=0.163824315
+sfy=6.0998444
+isfy=0.163938607
+' Initialize steppeer
+TL 4.9,4.9
+MT 1,1,2,2
+LC ,,1,1
+YA ,,4,4
+YB ,,200,200
+' Preset value
+AC 256000,256000,80000,80000
+DC 256000,256000,80000,80000
+SP 256000,256000,12000,12000
+KP 82,20
+KI 0.8,0.8
+KD 480,120
+CN 1,1,-1,0,0
+ST
+MO
+AG 2,2
+'XQ #IA,1
+'XQ #IB,2
+'SHABCD
+WT 700
+XQ #IA,1
+XQ #IB,2
+MG "II."
+EN
+
+#IT1
+' Canned test program fo A axis
+' Simply move the motor forward and backward
+' Assumed the axis has been reset and position 0 is at the middle
+~a=0
+SH~a
+v1=1
+#LP1
+PA~a=200000
+BG~a
+AM~a
+WT500
+PA~a=-200000
+BG~a
+AM~a
+WT500
+IF (v1=0)
+JP #LP2
+ENDIF
+JP #LP1
+#LP2
+PA~a=0
+BG~a
+AM~a
+EN
+
+#IT2
+' Canne test prgram for B axis
+' Simply move the motor forward and backward
+' Assumed the axis has been reset and position 0 is at the middle
+~b=1
+SH~b
+v1=1
+#LP3
+PA~b=200000
+BG~b
+AM~b
+WT500
+PA~b=-200000
+BG~b
+AM~b
+WT500
+IF (v1=0)
+JP #LP4
+ENDIF
+JP #LP3
+#LP4
+PA~b=0
+BG~b
+AM~b
+EN
+
+#IT3
+' Canned test program for C axis
+' Simply move the motor forward and backward
+' Assumed the axis has been reset and position 0 is at the middle
+~c=2
+SH~c
+v1=1
+#LP5
+PA~c=1000
+BG~c
+AM~c
+WT500
+PA~c=0
+BG~c
+AM~c
+WT500
+IF (v1=0)
+JP #LP6
+ENDIF
+JP #LP5
+#LP6
+PA~c=0
+BG~c
+AM~c
+EN
+
+#IT4
+' Canned test program for D axis
+' Simply move the motor forward and backward
+' Assumed the axis has been reset and position 0 is at the middle
+~d=3
+SH~d
+v1=1
+#LP7
+PA~d=1000
+BG~d
+AM~d
+WT500
+PA~d=0
+BG~d
+AM~d
+WT500
+IF (v1=0)
+JP #LP8
+ENDIF
+JP #LP7
+#LP8
+PA~d=0
+BG~d
+AM~d
+EN
+
+#IA
+' Initialize servo motor A, need to be exicuted everytime during power up
+VM[0]=1
+~a=0
+CE~a=2
+BA~a
+BM~a=8192/3
+BZ~a=-2
+WT1000
+'DP~a=0
+SH~a
+'IP~a=8192
+'AM~a
+'IP~a=-8192
+'AM~a
+VM[0]=0
+MG "IA."
+EN
+
+#IB
+' Initialize servo B, need to be exicuted everytime during power up
+VM[1]=1
+~b=1
+CE~b=2
+BA~b
+BM~b=8192/3
+BZ~b=-2
+WT1000
+'DP~b=0
+SH~b
+'IP~a=8192
+'AM~a
+'IP~a=-8192
+'AM~a
+VM[1]=0
+MG "IB."
+EN
+'
+#MR
+' Move RELATIVE, any axis, not thread save
+' Input: ~a, V1 - relative distance to move in linear encoder space
+aa=~a
+v3=_TD~a+V1; 'Target absolute positon
+IF (~a = 0)
+v2=V1*isfx; 'Convert from linear to rotary encoder count
+ELSE IF (~a = 1)
+v2=V1*isfy; 'Convert from linear to rotary encoder count
+ELSE
+v2=V1; ' Stepper motor. no linear encoder
+ENDIF
+PR~a=v2
+VM[aa]=1;
+SH~a
+BG~a
+MC~a
+WT50
+'backlash correction
+v2=0
+IF (~a=0)
+  v2=(v3-_TD~a)*isfx
+ELSE IF (~a = 1)
+  v2=(v3-_TD~a)*isfy
+ENDIF
+IF (v2 <> 0)
+  PR~a=v2
+  BG~a
+  MC~a
+  WT100
+ENDIF
+' Second backlash correction
+v2=0
+IF (~a=0)
+  v2=(v3-_TD~a)*isfx
+ELSE IF (~a = 1)
+  v2=(v3-_TD~a)*isfy
+ENDIF
+IF (v2 <> 0)
+PR~a=v2
+BG~a
+MC~a
+WT100
+ENDIF
+VM[aa]=0;
+EN
+'
+#MRA
+' Move RELATIVE, axis A
+' Input: Va - relative distance to move in linear encoder coordinate
+VM[0]=1
+v3=_TDA+Va; 'Target absolute position
+v2=Va*isfx
+SHA
+PRA=v2
+BGA
+MCA
+WT50
+'backlash correction
+Cnt=10
+#JMRA
+v2=(v3-_TDA)*isfx
+PRA=v2
+BGA
+MCA
+WT50
+v2=(v3-_TDA)*isfx
+iVa=@INT[v2]
+IF ((@ABS[iVa]>1) & (Cnt>0))
+Cnt = Cnt-1
+JP #JMRA
+ENDIF
+VM[0]=0;
+EN
+'
+#MRB
+' Move RELATIVE, axis B
+' Input Vb- relative distance to move
+VM[1]=1
+v5=_TDB+Vb; 'Target absolute position
+v4=Vb*isfy
+SHB
+PRB=v4
+BGB
+MCB
+WT50
+'backlash correction
+CntB=10
+#JMRB
+v4=(v5-_TDB)*isfy
+PRB=v4
+BGB
+MCB
+WT50
+v4=(v5-_TDB)*isfy
+iVb=@INT[v4]
+IF ((@ABS[iVb]>1))
+CntB = CntB-1
+JP #JMRB
+ENDIF
+VM[1]=0; ' must be together
+EN
+'
+#MRC
+' Move RELATIVE, axis C
+' Input Vc - relative distance to move
+VM[2]=1
+SHC
+PRC=Vc
+BGC
+MCC
+VM[2]=0; ' must be together
+EN
+'
+#MRD
+' Move RELATIVE, axis D
+' Input Vd - relative distance to move
+VM[3]=1
+SHD
+PRD=Vd
+BGD
+MCD
+VM[3]=0; ' must be together
+EN
+'
+#MA 
+' Move ABSOLUTE, not thread save
+' Input ~a - axis to move, V1 - absolute position to move
+v3=V1;  'Target absolute position
+IF (~a = 0)
+v2=V1*isfx; 'Convert from linear to rotary encoder count
+ELSE IF (~a = 1)
+v2=V1*isfy; 'Convert from linear to rotary encoder count
+ELSE
+v2=V1; ' Stepper motor. no linear encoder
+ENDIF
+
+idx=~a;VM[idx]=1; ' must be together
+SH~a
+PA~a=v2
+BG~a
+MC~a
+AM~a
+WT100
+' First backlash correction
+v2=0
+IF (~a=0)
+  v2=(v3-_TD~a)*isfx
+ELSE IF (~a = 1)
+  v2=(v3-_TD~a)*isfy
+ENDIF
+IF (v2 <> 0)
+  PR~a=v2
+  BG~a
+  MC~a
+ENDIF
+' First backlash correction
+v2=0
+IF (~a=0)
+  v2=(v3-_TD~a)*isfx
+ELSE IF (~a = 1)
+  v2=(v3-_TD~a)*isfy
+ENDIF
+IF (v2 <> 0)
+  PR~a=v2
+  BG~a
+  MC~a
+ENDIF
+idx=~a;VM[idx]=0; ' must be together
+EN
+'
+#MAA
+' Move ABSOLUTE, not thread save
+' Input Va - absolute position to move
+VM[0]=1; ' must be together
+v3=Va
+v2=Va*isfx
+SHA
+PAA=v2
+BGA
+MCA
+AMA
+WT50
+'backlash correction
+Cnt=10
+#JMAA
+v2=(v3-_TDA)*isfx
+PRA=v2
+BGA
+MCA
+WT50
+v2=(v3-_TDA)*isfx
+iVa=@INT[v2]
+IF ((@ABS[iVa]>1) & (Cnt>0))
+Cnt = Cnt-1
+JP #JMRA
+ENDIF
+VM[0]=0; ' must be together
+EN
+'
+#MAB
+' Move ABSOLUTE, not thread save
+' Input Vb - absolute position to move
+VM[1]=1; ' must be together
+v5=Vb
+v4=Vb*isfy
+SHB
+PAB=v4
+BGB
+MCB
+AMB
+WT50
+'backlash correction
+Cnt2=10
+#JMAB
+v4=(v5-_TDB)*isfy
+PRB=v4
+BGB
+MCB
+WT50
+v4=(v5-_TDB)*isfy
+iVb=@INT[v4]
+IF ((@ABS[iVb]>1) & (Cnt2>0))
+Cnt2 = Cnt2-1
+JP #JMRB
+ENDIF
+VM[1]=0; ' must be together
+EN
+'
+#MAC
+VM[2]=1; ' must be together
+' Move ABSOLUTE, not thread save
+' Input Vc - absolute position to move
+SHC
+PAC=Vc
+BGC
+MCC
+VM[2]=0; ' must be together
+EN
+'
+#MAD
+VM[3]=1; ' must be together
+' Move ABSOLUTE, not thread save
+' input Vd - absolute position to move
+SHD
+PAD=Vd
+BGD
+MCD
+VM[3]=0; ' must be together
+EN
+
+#MAXY
+' Move X and Y axis at the same time
+' Input Va, Vb - absolute positio of A and B axis respectively
+VM[0]=1;VM[1]=1
+v3=Va; v4=Vb
+v1=Va*isfx; v2=Vb*isfy
+SHAB
+PA v1,v2
+BGAB; ' change later to BCAB
+MCAB; ' change later to MCAB
+WT50
+'backlash correction
+Cnt=10
+#JMAXY
+v1=(v3-_TDA)*isfx
+v2=(v4-_TDB)*isfy
+PR v1,v2
+BGAB
+MCAB
+WT100
+v1=(v3-_TDA)*isfx
+v2=(v4-_TDB)*isfy
+iVa=@INT[v1]
+iVb=@INT[v2]
+IF (((@ABS[iVa]>1) | (@ABS[iVb]>1)) & (Cnt>0))
+Cnt = Cnt-1
+JP #JMAXY
+ENDIF
+VM[0]=0;VM[1]=0
+EN
+
+#MRXY
+' Move X and Y axis at the same time
+' Input Va, Vb - absolute positio of A and B axis respectively
+VM[0]=1;VM[1]=1
+v3=_TDA+Va; v4=_TDB+Vb
+v1=Va*isfx; v2=Vb*isfy
+SHAB
+PR v1,v2
+BGAB; ' change later to BCAB
+MCAB; ' change later to MCAB
+WT50
+'backlash correction
+Cnt=10
+#JMRXY
+v1=(v3-_TDA)*isfx
+v2=(v4-_TDB)*isfy
+PR v1,v2
+BGAB
+MCAB
+WT100
+v1=(v3-_TDA)*isfx
+v2=(v4-_TDB)*isfy
+iVa=@INT[v1]
+iVb=@INT[v2]
+IF (((@ABS[iVa]>1) | (@ABS[iVb]>1)) & (Cnt>0))
+Cnt = Cnt-1
+JP #JMRXY
+ENDIF
+VM[0]=0;VM[1]=0
+EN
+
+#IM
+' Is a1 axis Moving?
+' Input a1 = axis 0,1,2 or 3
+' Output status of axis a1, 1 is moving, 0 is idle
+MG "#",VM[a1]{Z1.0},"@"
+EN
+'
+#IMA
+' Query moving status of all axis?
+' Output 'A B C D', 1 is moving, 0 is idle
+MG "#IMA",VM[0]{Z1.0},VM[1]{Z1.0},VM[2]{Z1.0},VM[3]{Z1.0},"@"
+EN
+'
+#IMXY
+' Query moving status of axis A and B
+' Output 'A B', 1 is moving, 0 is idle
+MG "#IMXY",VM[0]{Z1.0},VM[1]{Z1.0},"@"
+EN
+'
+#GP
+' Get position of all axis
+MG "#GP",_TDA {Z9.0},_TDB {Z9.0},_TDC {Z9.0},_TDD {Z9.0},"@"
+EN
+'
+#GPA
+' Get position of a single axis
+' Input ~a = axis 0,1,2 or 3
+MG "#GPA",_TD~a {Z9.0},"@"
+EN
+'
+#GPXY
+' Get position of all axis
+' Output: 'A B', 1 is moving, 0 is idle
+MG "#GPXY",_TDA {Z9.0},_TDB {Z9.0},"@"
+EN
+
+#RSX
+' Reset A axis and move to center of stage
+' Input Rx - final A axis position counting from index (count 0) position
+VM[0]=1;  'Set after first move command
+S0=_SPA;  'Backup old speed
+SHA
+IF (_LRA = 0); 'If stage is at limit switch, move away
+PRA=80000
+BGA
+MCA
+WT500
+ENDIF
+#RSXAGAIN
+SPA=18000
+PRA=-2000000
+BGA
+MCA
+WT200; 'Wait 0.2 seconds
+' Double check that it has reach the end
+IF (_LRA <> 0); 'Repeat if stage has not hit the limit switch
+JP #RSXAGAIN
+ENDIF
+JGA=20000; 'Find index position
+HV=1000
+FIA; 'Actua find index position
+BGA
+MCA
+WT 10000; 'Must wait more because MCA can give false positive
+SPA=S0; 'Return speed to old value
+VM[0]=0
+EN
+
+#RSY
+' Reset B axis and move to center of stage
+' Input Ry - final A axis position counting from index (count 0) position
+VM[1]=1;  'Set after first move command
+S1=_SPB; 'Backup old speed
+SHB
+IF (_LRB = 0); 'If stage is at limit switch, move away
+PRB=80000
+BGB
+MCB
+WT500
+ENDIF
+#RSYAGAIN
+SPB=30000
+PRB=-1000000
+BGB
+MCB
+WT200; 'Wait 0.2 seconds
+' Double check that it has reach the end
+IF (_LRB <> 0); 'Repeat if stage has not hit the limit switch
+JP #RSYAGAIN
+ENDIF
+JGB=25000; 'Find index position
+HV=1000
+FIB; 'Actual find index position
+BGB
+MCB
+WT 10000; 'Must wait more because MCA can give false positive
+SPB=S1; 'Return speed to old value
+VM[1]=0
+EN
+
+#RSZ1
+' Reset C axis and move to center of stage
+' Reset position is set to 0
+S3=_SPD
+SHD
+SPD=5000
+IF (_LRD = 0)
+PRD=200
+BGD
+MCD
+ENDIF
+PRD=-500000
+BGD
+VM[3]=1; 'Set after first move command
+MCD
+SPD=2500
+PRD=1000
+BGD
+MCD
+SPD=1100
+PRD=-1200
+BGD
+MCD
+SPD=S3
+DPD=0
+VM[3]=0
+EN
+
+#RSZ2
+' Reset D axis and move to center of stage
+' Reset position is set to 0
+S2=_SPC
+SHC
+SPC=5000
+IF (_LRC = 0)
+PRC=200
+BGC
+MCC
+ENDIF
+PRC=-500000
+BGC
+VM[2]=1; 'Set after first move command
+MCC
+SPC=2500
+PRC=1000
+BGC
+MCC
+SPC=1100
+PRC=-1200
+BGC
+MCC
+SPC=S2
+DPC=0
+VM[2]=0
+EN
+
+#AN3
+' Read FFU pressure
+MG "#",@AN[3],"@"
+EN
+
+#IN1
+' Read wafer pressent sensor
+' 1 wafer present, 0 wafer not present
+MG "#",@IN[1],"@"
+EN

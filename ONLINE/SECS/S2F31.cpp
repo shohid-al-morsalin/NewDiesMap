@@ -1,0 +1,25 @@
+// S2F31.cpp: implementation of the CS2F31 class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "S2F31.h"
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+CS2F31::CS2F31() {}
+
+CS2F31::~CS2F31() {}
+
+BOOL CS2F31::Validate() {
+	if (!Items.size()) {
+		return FALSE;
+	}
+	SecsItem* Item = Items[0];
+	if (!Item->IsASCII()) {
+		return FALSE;
+	}
+	return TRUE;
+}

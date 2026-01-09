@@ -1,0 +1,10 @@
+// Microsoft Developer Studio generated Help ID include file.
+// Used by E95.rc
+//
+#define HIDC_ADD                        0xb2d20333    // IDD_DEFINECIRCULAR
+#define HIDC_ANGLE                      0xb2d22dfe    // IDD_DEFINECIRCULAR
+#define HIDC_CLEAR                      0xb2d22b87    // IDD_DEFINECIRCULAR
+#define HIDC_DELETE                     0xb2d22e02    // IDD_DEFINECIRCULAR
+#define HIDC_DISTANCE                   0xb2d24e22    // IDD_DEFINECIRCULAR
+#define HIDC_DISTANCE2                  0x80f14e23    // IDD_DEFINECIRCULARSEG
+#define HIDC_POINT                      0xb2d20389    // IDD_DEFINECIRCULAR

@@ -1,0 +1,13 @@
+HSMS Protocol
+
+typedef struct 
+{
+	BYTE	m_DataLen[4] ;
+	BYTE	m_SessionId[2];
+	BYTE	m_Stream ;
+	BYTE	m_Function ;
+	BYTE	m_Ptype;
+	BYTE	m_Stype;		// LINKREQ, DATAMSG, SEPERATEREQ ...
+	BYTE	m_Sysbyte[4];   
+	BYTE	m_Message[MAX_RECVSTRING];
+} GEM_HEADER;
