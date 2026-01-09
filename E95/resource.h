@@ -1075,6 +1075,7 @@
 #define IDC_BTN_TRW_GO_XY               1260
 #define IDC_CONFOCAL_Z_HEIGHT2          1260
 #define IDC_SETMOVINGAVG_CWL_DLG14      1260
+#define IDC_CREATE_DIE                  1260
 #define IDC_DRAWTEXT                    1261
 #define IDC_POSZ2                       1261
 #define IDC_INITIALIZE                  1261
@@ -1927,6 +1928,10 @@
 #define IDC_2DPOP                       1905
 #define IDC_DICEMAP                     1906
 #define IDC_CHECK_EXCLUDE_DIE           1907
+#define IDC_UL                          1909
+#define IDC_LL                          1910
+#define IDC_LR                          1911
+#define IDC_PRECONSTRUCT_DIE            1912
 #define IDD_EDITBINS                    10005
 #define IDR_MENUPLOT                    10006
 #define IDB_LEDS                        10007
@@ -2369,6 +2374,7 @@
 #define IDC_GO_ECHO_PROBE               11121
 #define IDC_MEASURE_TAIKO               11121
 #define IDC_FOCUS008DLG14               11121
+#define IDC_CAL_PITCH                   11121
 #define IDC_SUB2                        11122
 #define IDC_MARKBR                      11122
 #define IDC_ZDOWN                       11122
@@ -3380,7 +3386,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        354
 #define _APS_NEXT_COMMAND_VALUE         32315
-#define _APS_NEXT_CONTROL_VALUE         1908
+#define _APS_NEXT_CONTROL_VALUE         1913
 #define _APS_NEXT_SYMED_VALUE           284
 #endif
 #endif

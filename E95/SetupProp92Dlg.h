@@ -51,4 +51,13 @@ public:
 	void ReadData();
 	CButton m_maskCheck;
 	afx_msg void OnBnClickedCheckExcludeDie();
+	afx_msg void OnBnClickedUL();
+	afx_msg void OnBnClickedLL();
+	afx_msg void OnBnClickedLR();
+
+	double ULx = 0.0, ULy = 0.0, LLx = 0.0, LLy = 0.0, LRx = 0.0, LRy = 0.0;
+	CButton m_btnUL, m_btnLL, m_btnLR;
+	afx_msg void OnBnClickedCalPitch();
+	afx_msg void OnBnClickedPreconstructDie();
+	afx_msg void OnBnClickedCreateDie();
 };
