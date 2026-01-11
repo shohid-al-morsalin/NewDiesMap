@@ -5,6 +5,7 @@
 #include "..\SRC\ResizableDialog.h"
 #include "DiceMap.h"
 
+
 class CSetupProp92Dlg : public CResizableDialog, public CSetupPropComm
 {
 	

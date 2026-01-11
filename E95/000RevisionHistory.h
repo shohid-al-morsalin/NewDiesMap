@@ -104,6 +104,10 @@
 //20251219_Mohir/ Mohir // Added functionalites for closing csv
 //20251219_Mahmudul / Added Dicemap to pdf that auto generate while run recipe from job.
  //20260101 Mahmudul / Added New Dicemap tab(IDD_SETUPPROP92) and DiceMap class 
+ // 01092026 MORSALIN add die map alignment error solving algorithm
+ // 01092026_1 MORSALIN Create recipe system from new die map.
+
+
 NOTE:
 ===================================================
 Echo					: IDD_SETUPPROP3

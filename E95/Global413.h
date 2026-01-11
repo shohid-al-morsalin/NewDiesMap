@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <unordered_set> // 01092026_1 MORSALIN
+
 #define BMPSIZEX	512
 #define BMPSIZEY	384
 
@@ -91,6 +93,8 @@ public:
 	vector<int> notMeasured; // 10312025 MORSALIN
 	map<int, int> LessDataDie;
 	// ]
+
+	std::unordered_set<uint64_t> SelectedDies; // 01092026_1 MORSALIN
 
 	CFPoint LocXY;
 

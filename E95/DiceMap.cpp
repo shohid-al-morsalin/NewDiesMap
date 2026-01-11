@@ -1,8 +1,11 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "DiceMap.h"
 #include <cmath>
 #include <string>
 #include <iostream>
+#include "413App.h"
+
+#include <unordered_set> // 01092026_1 MORSALIN
 
 CDiceMap::CDiceMap()
 {
@@ -268,6 +271,13 @@ void CDiceMap::OnLButtonUp(UINT nFlags, CPoint point)
                //  AfxMessageBox(std::to_wstring(die.corners[0].y).c_str());
 
             die.bSelected = !die.bSelected; // Toggle selection
+            // [ 01092026_1 MORSALIN
+            auto it = p413App->Global.SelectedDies.find(die.id);
+            if (it != p413App->Global.SelectedDies.end())
+                p413App->Global.SelectedDies.erase(it);   // exists → delete
+            else
+                p413App->Global.SelectedDies.insert(die.id);   // not exists → insert
+            // ]
             bChanged = true;
             break; // Stop after finding top-most match
         }
@@ -402,9 +412,6 @@ void CDiceMap::OnLButtonUp(UINT nFlags, CPoint point)
 //    dc.BitBlt(0, 0, cx, cy, &memDC, 0, 0, SRCCOPY);
 //    memDC.SelectObject(pOldBitmap);
 //}
-
-
-
 void CDiceMap::OnPaint()
 {
     CPaintDC dc(this);
@@ -820,6 +827,7 @@ void CDiceMap::OnMouseMove(UINT nFlags, CPoint point)
             break; // Stop at the first die found (topmost)
         }
     }
+    
 
     // 4. Update Tooltip ONLY if the die changed (prevents flicker)
     if (hoveredID != m_iLastHoveredDieId)
@@ -864,3 +872,4 @@ void CDiceMap::PreSubclassWindow()
         m_ToolTip.SetDelayTime(TTDT_AUTOPOP, 10000); // Keep open for 10 seconds
     }
 }
+

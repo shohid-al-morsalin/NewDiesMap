@@ -5,6 +5,7 @@
 #include "E95.h"
 #include "SetupProp92Dlg.h"
 #include "afxdialogex.h"
+#include "DiceMap.h"
 
 #include <string>
 
@@ -193,12 +194,14 @@ void CSetupProp92Dlg::OnBnClickedCheckExcludeDie()
 	}
 }
 
+// [ 01092026_1 MORSALIN
+
 void CSetupProp92Dlg::OnBnClickedUL()
 {
 	// Need to collect from stage later
 	ULx = -2.5;
 	ULy = 2.5;
-	CString st; st.Format("%.3lf, %.3lf", ULx, ULy);
+	CString st; st.Format("%.2lf, %.2lf", ULx, ULy);
 	m_btnUL.SetWindowText(_T(st));
 }
 
@@ -207,7 +210,7 @@ void CSetupProp92Dlg::OnBnClickedLL()
 	// Need to collect from stage later
 	LLx = -2.5;
 	LLy = -2.5;
-	CString st; st.Format("%.3lf, %.3lf", LLx, LLy);
+	CString st; st.Format("%.2lf, %.2lf", LLx, LLy);
 	m_btnLL.SetWindowText(_T(st));
 }
 
@@ -216,7 +219,7 @@ void CSetupProp92Dlg::OnBnClickedLR()
 	// Need to collect from stage later
 	LRx = 2.5;
 	LRy = -2.5;
-	CString st; st.Format("%.3lf, %.3lf", LRx, LRy);
+	CString st; st.Format("%.2lf, %.2lf", LRx, LRy);
 	m_btnLR.SetWindowText(_T(st));
 }
 
@@ -268,8 +271,157 @@ void CSetupProp92Dlg::OnBnClickedPreconstructDie()
 		AfxMessageBox(_T("Invalid Data Entered"));
 	}
 }
+// ]
+
+
+// [ 01092026 MORSALIN
+struct WaferPoint
+{
+	double x;
+	double y;
+};
+
+bool ComputeAffineTransform(const std::vector<WaferPoint>& measured, const std::vector<WaferPoint>& ideal, double M[2][3])
+{
+	if (measured.size() < 3 || ideal.size() < 3)
+		return false;
+
+	int N = measured.size();
+
+	double A[6][6] = { 0 };
+	double B[6] = { 0 };
+
+	for (int i = 0; i < N; i++)
+	{
+		double x = measured[i].x;
+		double y = measured[i].y;
+		double X = ideal[i].x;
+		double Y = ideal[i].y;
+
+		// Equation for X
+		A[0][0] += x * x;  A[0][1] += x * y;  A[0][2] += x;
+		A[1][0] += x * y;  A[1][1] += y * y;  A[1][2] += y;
+		A[2][0] += x;    A[2][1] += y;    A[2][2] += 1;
+
+		B[0] += x * X;
+		B[1] += y * X;
+		B[2] += X;
+
+		// Equation for Y
+		A[3][3] += x * x;  A[3][4] += x * y;  A[3][5] += x;
+		A[4][3] += x * y;  A[4][4] += y * y;  A[4][5] += y;
+		A[5][3] += x;    A[5][4] += y;    A[5][5] += 1;
+
+		B[3] += x * Y;
+		B[4] += y * Y;
+		B[5] += Y;
+	}
+
+	// Solve manually (since matrix is small)
+	double det =
+		A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) -
+		A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) +
+		A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+
+	if (fabs(det) < 1e-9)
+		return false;
+
+	double invDet = 1.0 / det;
+
+	// Solve X part
+	M[0][0] = (B[0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+		- A[0][1] * (B[1] * A[2][2] - A[1][2] * B[2])
+		+ A[0][2] * (B[1] * A[2][1] - A[1][1] * B[2])) * invDet;
+
+	M[0][1] = (A[0][0] * (B[1] * A[2][2] - A[1][2] * B[2])
+		- B[0] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+		+ A[0][2] * (A[1][0] * B[2] - B[1] * A[2][0])) * invDet;
+
+	M[0][2] = (A[0][0] * (A[1][1] * B[2] - B[1] * A[2][1])
+		- A[0][1] * (A[1][0] * B[2] - B[1] * A[2][0])
+		+ B[0] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])) * invDet;
+
+	// Solve Y part
+	det =
+		A[3][3] * (A[4][4] * A[5][5] - A[4][5] * A[5][4]) -
+		A[3][4] * (A[4][3] * A[5][5] - A[4][5] * A[5][3]) +
+		A[3][5] * (A[4][3] * A[5][4] - A[4][4] * A[5][3]);
+
+	invDet = 1.0 / det;
+
+	M[1][0] = (B[3] * (A[4][4] * A[5][5] - A[4][5] * A[5][4])
+		- A[3][4] * (B[4] * A[5][5] - A[4][5] * B[5])
+		+ A[3][5] * (B[4] * A[5][4] - A[4][4] * B[5])) * invDet;
+
+	M[1][1] = (A[3][3] * (B[4] * A[5][5] - A[4][5] * B[5])
+		- B[3] * (A[4][3] * A[5][5] - A[4][5] * A[5][3])
+		+ A[3][5] * (A[4][3] * B[5] - B[4] * A[5][3])) * invDet;
+
+	M[1][2] = (A[3][3] * (A[4][4] * B[5] - B[4] * A[5][4])
+		- A[3][4] * (A[4][3] * B[5] - B[4] * A[5][3])
+		+ B[3] * (A[4][3] * A[5][4] - A[4][4] * A[5][3])) * invDet;
+
+	return true;
+}
+
+WaferPoint ApplyTransform(const WaferPoint& p, double M[2][3])
+{
+	WaferPoint out;
+	out.x = M[0][0] * p.x + M[0][1] * p.y + M[0][2];
+	out.y = M[1][0] * p.x + M[1][1] * p.y + M[1][2];
+	return out;
+}
+// ]
 
 void CSetupProp92Dlg::OnBnClickedCreateDie()
 {
-	
+	m_diceMap.m_DieList[27].corners[0].x;
+
+	// [ 01092026 MORSALIN
+	/*std::vector<WaferPoint> measured = {
+		{10, 20}, {200, 25}, {15, 220}, {210, 215}
+	};
+
+	std::vector<WaferPoint> ideal = {
+		{0, 0}, {200, 0}, {0, 200}, {200, 200}
+	};*/
+
+	/*std::vector<WaferPoint> measured = {
+		{110, 0}, {-90, 0}, {10, 100}, {10, -100}
+	};
+
+	std::vector<WaferPoint> ideal = {
+		{100, 0}, {-100, 0}, {0, 100}, {0, -100}
+	};*/
+
+	std::vector<WaferPoint> ideal =
+	{
+		{ 0.0,   0.0 },
+		{ 200.0, 0.0 },
+		{ 0.0,   200.0 },
+		{ 200.0, 200.0 }
+	};
+	std::vector<WaferPoint> measured =
+	{
+		{ 0.00,    0.00    },
+		{ 196.96, -34.73  },
+		{ 34.73,  196.96  },
+		{ 231.69, 162.23  }
+	};
+
+	double M[2][3];
+
+	if (!ComputeAffineTransform(measured, ideal, M))
+	{
+		//std::cout << "Transform failed\n";
+		return;
+	}
+
+	WaferPoint die = { 120.0, 130.0 };
+	WaferPoint corrected = ApplyTransform(die, M);
+	// ]
+
 }
+
+// Access 27th die corner coordinate: m_diceMap.m_DieList[27].corners[0].x;
+
