@@ -6,6 +6,7 @@
 #include "SetupProp92Dlg.h"
 #include "afxdialogex.h"
 #include "DiceMap.h"
+#include "413App.h"
 
 #include <string>
 
@@ -77,6 +78,7 @@ BOOL CSetupProp92Dlg::OnInitDialog() {
 	m_diceMap.SetShowPartialDies(true);
 
 	SetEditVal(IDC_EDIT10, m_diceMap.m_angle);
+	p413App->Global.SelectedDies.clear(); // 01092026_1 MORSALIN
 
 	return TRUE;
 }
@@ -148,6 +150,8 @@ void CSetupProp92Dlg::ReadData()
 
 void CSetupProp92Dlg::OnBnClickedButtonUpdateDiemap()
 {
+	p413App->Global.SelectedDies.clear();
+
 	// UpdateData(TRUE) reads from Screen to Variables
 	if (UpdateData(TRUE))
 	{
@@ -249,6 +253,8 @@ void CSetupProp92Dlg::OnBnClickedCalPitch()
 
 void CSetupProp92Dlg::OnBnClickedPreconstructDie()
 {
+	p413App->Global.SelectedDies.clear();
+
 	// Calculate 4th corner.
 	
 	// Create die.
@@ -281,85 +287,57 @@ struct WaferPoint
 	double y;
 };
 
-bool ComputeAffineTransform(const std::vector<WaferPoint>& measured, const std::vector<WaferPoint>& ideal, double M[2][3])
+bool ComputeSimilarityTransform(
+	const std::vector<WaferPoint>& measured,
+	const std::vector<WaferPoint>& ideal,
+	double M[2][3])
 {
-	if (measured.size() < 3 || ideal.size() < 3)
+	if (measured.size() < 2 || measured.size() != ideal.size())
 		return false;
 
 	int N = measured.size();
 
-	double A[6][6] = { 0 };
-	double B[6] = { 0 };
+	double mx = 0, my = 0;
+	double ix = 0, iy = 0;
 
-	for (int i = 0; i < N; i++)
+	for (int i = 0; i < N; ++i)
 	{
-		double x = measured[i].x;
-		double y = measured[i].y;
-		double X = ideal[i].x;
-		double Y = ideal[i].y;
-
-		// Equation for X
-		A[0][0] += x * x;  A[0][1] += x * y;  A[0][2] += x;
-		A[1][0] += x * y;  A[1][1] += y * y;  A[1][2] += y;
-		A[2][0] += x;    A[2][1] += y;    A[2][2] += 1;
-
-		B[0] += x * X;
-		B[1] += y * X;
-		B[2] += X;
-
-		// Equation for Y
-		A[3][3] += x * x;  A[3][4] += x * y;  A[3][5] += x;
-		A[4][3] += x * y;  A[4][4] += y * y;  A[4][5] += y;
-		A[5][3] += x;    A[5][4] += y;    A[5][5] += 1;
-
-		B[3] += x * Y;
-		B[4] += y * Y;
-		B[5] += Y;
+		mx += measured[i].x;
+		my += measured[i].y;
+		ix += ideal[i].x;
+		iy += ideal[i].y;
 	}
 
-	// Solve manually (since matrix is small)
-	double det =
-		A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) -
-		A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) +
-		A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+	mx /= N; my /= N;
+	ix /= N; iy /= N;
 
-	if (fabs(det) < 1e-9)
-		return false;
+	double num = 0;
+	double den = 0;
 
-	double invDet = 1.0 / det;
+	for (int i = 0; i < N; ++i)
+	{
+		double xm = measured[i].x - mx;
+		double ym = measured[i].y - my;
 
-	// Solve X part
-	M[0][0] = (B[0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
-		- A[0][1] * (B[1] * A[2][2] - A[1][2] * B[2])
-		+ A[0][2] * (B[1] * A[2][1] - A[1][1] * B[2])) * invDet;
+		double xi = ideal[i].x - ix;
+		double yi = ideal[i].y - iy;
 
-	M[0][1] = (A[0][0] * (B[1] * A[2][2] - A[1][2] * B[2])
-		- B[0] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
-		+ A[0][2] * (A[1][0] * B[2] - B[1] * A[2][0])) * invDet;
+		num += xm * yi - ym * xi;
+		den += xm * xi + ym * yi;
+	}
 
-	M[0][2] = (A[0][0] * (A[1][1] * B[2] - B[1] * A[2][1])
-		- A[0][1] * (A[1][0] * B[2] - B[1] * A[2][0])
-		+ B[0] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])) * invDet;
+	double theta = atan2(num, den);
 
-	// Solve Y part
-	det =
-		A[3][3] * (A[4][4] * A[5][5] - A[4][5] * A[5][4]) -
-		A[3][4] * (A[4][3] * A[5][5] - A[4][5] * A[5][3]) +
-		A[3][5] * (A[4][3] * A[5][4] - A[4][4] * A[5][3]);
+	double c = cos(theta);
+	double s = sin(theta);
 
-	invDet = 1.0 / det;
+	M[0][0] = c;
+	M[0][1] = -s;
+	M[1][0] = s;
+	M[1][1] = c;
 
-	M[1][0] = (B[3] * (A[4][4] * A[5][5] - A[4][5] * A[5][4])
-		- A[3][4] * (B[4] * A[5][5] - A[4][5] * B[5])
-		+ A[3][5] * (B[4] * A[5][4] - A[4][4] * B[5])) * invDet;
-
-	M[1][1] = (A[3][3] * (B[4] * A[5][5] - A[4][5] * B[5])
-		- B[3] * (A[4][3] * A[5][5] - A[4][5] * A[5][3])
-		+ A[3][5] * (A[4][3] * B[5] - B[4] * A[5][3])) * invDet;
-
-	M[1][2] = (A[3][3] * (A[4][4] * B[5] - B[4] * A[5][4])
-		- A[3][4] * (A[4][3] * B[5] - B[4] * A[5][3])
-		+ B[3] * (A[4][3] * A[5][4] - A[4][4] * A[5][3])) * invDet;
+	M[0][2] = ix - (c * mx - s * my);
+	M[1][2] = iy - (s * mx + c * my);
 
 	return true;
 }
@@ -378,6 +356,35 @@ void CSetupProp92Dlg::OnBnClickedCreateDie()
 	m_diceMap.m_DieList[27].corners[0].x;
 
 	// [ 01092026 MORSALIN
+
+	std::vector<WaferPoint> ideal, measured;
+	// Stage will goto the all 4 marking positions and create ideal, measured vector automatically using PR.
+	if (p413App->Global.SelectedDies.size() != 4) {
+		AfxMessageBox("Please select 4 dies in random position.");
+		return;
+	}
+	else {
+		
+
+		uint64_t  id;
+		for (int i = 0; i < 4; i++) {
+			auto it = p413App->Global.SelectedDies.begin();
+			std::advance(it, i);
+			id = *it;
+			double x = m_diceMap.m_DieList[id-1].corners[3].x;  // corrently it's considering LL of die. (index 3)
+			double y = m_diceMap.m_DieList[id-1].corners[3].y;
+
+			// For simulation I am set random data to check the calculation
+			if (i == 0) x = 90.0, y = 0.0;
+			else if (i == 1) x = 0.0, y = 90.0;
+			else if (i == 2) x = -90.0, y = 0.0;
+			else if (i == 3) x = 0.0, y = -90.0;
+
+			ideal.push_back({ x, y });
+		}
+	}
+	
+
 	/*std::vector<WaferPoint> measured = {
 		{10, 20}, {200, 25}, {15, 220}, {210, 215}
 	};
@@ -394,7 +401,7 @@ void CSetupProp92Dlg::OnBnClickedCreateDie()
 		{100, 0}, {-100, 0}, {0, 100}, {0, -100}
 	};*/
 
-	std::vector<WaferPoint> ideal =
+	/*std::vector<WaferPoint> ideal =
 	{
 		{ 0.0,   0.0 },
 		{ 200.0, 0.0 },
@@ -407,17 +414,34 @@ void CSetupProp92Dlg::OnBnClickedCreateDie()
 		{ 196.96, -34.73  },
 		{ 34.73,  196.96  },
 		{ 231.69, 162.23  }
+	};*/
+
+	//std::vector<WaferPoint> ideal =
+	//{
+	//	{  90.0,   0.0 },
+	//	{   0.0,  90.0 },
+	//	{ -90.0,   0.0 },
+	//	{   0.0, -90.0 }
+	//};
+
+	measured =
+	{
+		{  90.63, -15.63 },
+		{  17.63,  88.63 },
+		{ -86.63,  15.63 },
+		{ -13.63, -88.63 }
 	};
 
 	double M[2][3];
 
-	if (!ComputeAffineTransform(measured, ideal, M))
+	if (!ComputeSimilarityTransform(measured, ideal, M))
 	{
 		//std::cout << "Transform failed\n";
 		return;
 	}
 
-	WaferPoint die = { 120.0, 130.0 };
+	//WaferPoint die = { 90.63, -15.63 };
+	WaferPoint die = { -13.63, -88.63 };
 	WaferPoint corrected = ApplyTransform(die, M);
 	// ]
 
